@@ -27,9 +27,29 @@ http://developer.android.com/guide/topics/graphics/2d-graphics.html#nine-patch.
 
 __all__ = ["NinePatch"]
 
-from pyglet.gl import *
+import pyglet
 
-class PixelData:
+from pyglet.gl import GL_BLEND, GL_ENABLE_BIT, GL_ONE_MINUS_SRC_ALPHA, GL_QUADS, GL_SRC_ALPHA
+from pyglet.gl import glBindTexture, glBlendFunc, glClearColor, glEnable, glPopAttrib, glPushAttrib
+
+
+class _NinePatchGroup(pyglet.graphics.Group):
+    def __init__(self, texture, parent=None):
+        super().__init__(parent)
+        self.texture = texture
+
+    def set_state(self):
+        glPushAttrib(GL_ENABLE_BIT)
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        glEnable(self.texture.target)
+        glBindTexture(self.texture.target, self.texture.id)
+
+    def unset_state(self):
+        glPopAttrib()
+
+
+class _PixelData:
     def __init__(self, image):
         image_data = image.get_image_data()
         self.has_alpha = 'A' in image_data.format
@@ -40,26 +60,27 @@ class PixelData:
     def is_black(self, x, y):
         p = (y * self.width + x) * 4
         if self.has_alpha:
-            if self.data[p+3] == '\x00':
-                return False # Fully transparent
+            if self.data[p + 3] == 0:
+                return False  # Fully transparent
 
-        return self.data[p:p+3] == '\x00\x00\x00'
+        return self.data[p:p + 3] == b'\x00\x00\x00'
+
 
 class NinePatch:
     """A scalable 9-patch image.
     """
 
     # Content area of the image, in pixels from the edge.
-    padding_top = None
-    padding_bottom = None
-    padding_right = None
-    padding_left = None
+    padding_top = 0
+    padding_bottom = 0
+    padding_right = 0
+    padding_left = 0
 
     # Resizable area of the image, in pixels from the closest edge
-    stretch_top = None
-    stretch_left = None
-    stretch_right = None
-    stretch_bottom = None
+    stretch_top = 0
+    stretch_left = 0
+    stretch_right = 0
+    stretch_bottom = 0
 
     def __init__(self, image):
         """Create NinePatch cuts of an image
@@ -69,9 +90,9 @@ class NinePatch:
             texture - force cut ImageDatas to be Textures (or Regions)
         """
 
-        data = PixelData(image)
-        width = data.width
-        height = data.height
+        pixel_data = _PixelData(image)
+        width = image.width
+        height = pixel_data.height
 
         # Texture dimensions after removing the 9patch outline.
         self.width = width - 2
@@ -82,28 +103,28 @@ class NinePatch:
 
         # Find stretch area markers
         for x in range(1, width - 1):
-            if data.is_black(x, height - 1):
+            if pixel_data.is_black(x, height - 1):
                 self.stretch_left = x
                 break
         else:
             self.stretch_left = 1
 
         for x in range(width - 2, 0, -1):
-            if data.is_black(x, height - 1):
+            if pixel_data.is_black(x, height - 1):
                 self.stretch_right = width - x
                 break
         else:
             self.stretch_right = 1
 
         for y in range(1, height - 1):
-            if data.is_black(0, y):
+            if pixel_data.is_black(0, y):
                 self.stretch_bottom = y
                 break
         else:
             self.stretch_bottom = 1
 
         for y in range(height - 2, 0, -1):
-            if data.is_black(0, y):
+            if pixel_data.is_black(0, y):
                 self.stretch_top = height - y
                 break
         else:
@@ -111,22 +132,22 @@ class NinePatch:
 
         # Find content area markers, if any
         for x in range(1, width - 1):
-            if data.is_black(x, 0):
+            if pixel_data.is_black(x, 0):
                 self.padding_left = x - 1
                 break
 
         for x in range(width - 2, 0, -1):
-            if data.is_black(x, 0):
+            if pixel_data.is_black(x, 0):
                 self.padding_right = self.width - x
                 break
 
         for y in range(1, height - 1):
-            if data.is_black(width - 1, y):
+            if pixel_data.is_black(width - 1, y):
                 self.padding_bottom = y - 1
                 break
 
         for y in range(height - 2, 0, -1):
-            if data.is_black(width - 1, y):
+            if pixel_data.is_black(width - 1, y):
                 self.padding_top = self.height - y
                 break
 
@@ -141,15 +162,15 @@ class NinePatch:
         v4 = height - 1
 
         # Texture coordinates as ratio of image size (0 to 1)
-        u1, u2, u3, u4 = [s / float(width) for s in (u1, u2, u3, u4)]
-        v1, v2, v3, v4 = [s / float(height) for s in (v1, v2, v3, v4)]
+        u1, u2, u3, u4 = [s / width for s in (u1, u2, u3, u4)]
+        v1, v2, v3, v4 = [s / height for s in (v1, v2, v3, v4)]
 
         # Scale texture coordinates to match the tex_coords pyglet gives us
         # (these aren't necessarily 0-1 as the texture may have been packed)
-        (tu1, tv1, _, 
-         _, _, _, 
-         tu2, tv2, _, 
-         _, _, _) = self.texture.tex_coords
+        (tu1, tv1, ___,
+         ___, ___, ___,
+         tu2, tv2, ___,
+         ___, ___, ___) = self.texture.tex_coords
         u_scale = tu2 - tu1
         u_bias = tu1
         v_scale = tv2 - tv1
@@ -181,12 +202,7 @@ class NinePatch:
         self.indices = []
         for y in range(3):
             for x in range(3):
-                self.indices.extend([
-                    x + y * 4,
-                    (x + 1) + y * 4,
-                    (x + 1) + (y + 1) * 4,
-                    x + (y + 1) * 4,
-                ])
+                self.indices.extend([x + y * 4,  (x + 1) + y * 4,  (x + 1) + (y + 1) * 4,  x + (y + 1) * 4])
 
     def get_vertices(self, x, y, width, height):
         """Get 16 2D vertices for the given image region"""
@@ -223,7 +239,7 @@ class NinePatch:
         """Draw the nine-patch at the given image dimensions."""
         width = max(width, self.width + 2)
         height = max(height, self.height + 2)
-        vertices = self.get_vertices(x, y, width, height)
+        vertices = self.get_vertices(int(x), int(y), int(width), int(height))
 
         glPushAttrib(GL_ENABLE_BIT)
         glEnable(GL_BLEND)
@@ -243,16 +259,19 @@ class NinePatch:
                   width + self.padding_left + self.padding_right,
                   height + self.padding_bottom + self.padding_top)
 
+
 if __name__ == '__main__':
     import sys
+
     image = pyglet.image.load(sys.argv[1])
     ninepatch = NinePatch(image)
 
     window = pyglet.window.Window(resizable=True)
-    label = pyglet.text.Label('Hello, NinePatch', 
-                              font_size=16,
+    label = pyglet.text.Label('Hello, NinePatch!',
+                              font_size=48,
                               anchor_y='bottom',
-                              color=(0,0,0,255))
+                              color=(0, 0, 0, 255))
+
 
     @window.event
     def on_draw():
@@ -264,5 +283,6 @@ if __name__ == '__main__':
         label.y = window.height / 2 - height / 2
         ninepatch.draw_around(label.x, label.y, width, height)
         label.draw()
-        
+
+
     pyglet.app.run()
