@@ -11,9 +11,10 @@ class Frame:
         window.push_handlers(self)
         self._cell_size = cell_size
         self._cells = {}
+        self._active_widgets = set()
 
     def _hash(self, x, y):
-        """Normalize vector to cell size"""
+        """Normalize position to cell"""
         return int(x / self._cell_size), int(y / self._cell_size)
 
     def add_widget(self, widget):
@@ -27,15 +28,17 @@ class Frame:
         """Pass the event to any widgets within range of the mouse"""
         for widget in self._cells.get(self._hash(x, y), set()):
             widget.dispatch_event('on_mouse_press', x, y, buttons, modifiers)
+            self._active_widgets.add(widget)
 
     def on_mouse_release(self, x, y, buttons, modifiers):
-        """Pass the event to any widgets within range of the mouse"""
-        for widget in self._cells.get(self._hash(x, y), set()):
+        """Pass the event to any widgets that are currently active"""
+        for widget in self._active_widgets:
             widget.dispatch_event('on_mouse_release', x, y, buttons, modifiers)
+        self._active_widgets.clear()
 
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
-        """Pass the event to any widgets within range of the mouse"""
-        for widget in self._cells.get(self._hash(x, y), set()):
+        """Pass the event to any widgets that are currently active"""
+        for widget in self._active_widgets:
             widget.dispatch_event('on_mouse_drag', x, y, dx, dy, buttons, modifiers)
 
     def on_mouse_scroll(self, x, y, index, direction):
