@@ -100,9 +100,11 @@ ToggleButton.register_event_type('on_toggle')
 class Slider(WidgetBase):
 
     def __init__(self, x, y, base, knob, batch=None, group=None):
-        super().__init__(x, y - knob.height / 2, base.width, knob.height)
+        super().__init__(x, y, base.width, knob.height)
         self._base_img = base
         self._knob_img = knob
+        self._half_knob_width = knob.width / 2
+        self._half_knob_height = knob.height / 2
         self._knob_img.anchor_y = knob.height / 2
         self._max_knob_x = x + base.width - knob.width
 
@@ -114,7 +116,19 @@ class Slider(WidgetBase):
         self._value = 0
         self._in_update = False
 
+    @property
+    def _min_y(self):
+        return self._y - self._half_knob_height
+
+    @property
+    def _max_y(self):
+        return self._y + self._half_knob_height + self._base_img.height / 2
+
+    def _check_hit(self, x, y):
+        return self._x < x < self._x + self._width and self._min_y < y < self._max_y
+
     def _update_knob(self, x):
+        x -= self._half_knob_width
         self._knob_spr.x = max(self._x, min(x, self._max_knob_x))
         self._value = abs(((self._knob_spr.x - self._x) * 100) / (self._x - self._max_knob_x))
         self.dispatch_event('on_change', self._value)
