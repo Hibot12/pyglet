@@ -128,8 +128,7 @@ class Slider(WidgetBase):
         return self._x < x < self._x + self._width and self._min_y < y < self._max_y
 
     def _update_knob(self, x):
-        x -= self._half_knob_width
-        self._knob_spr.x = max(self._x, min(x, self._max_knob_x))
+        self._knob_spr.x = max(self._x, min(x - self._half_knob_width, self._max_knob_x))
         self._value = abs(((self._knob_spr.x - self._x) * 100) / (self._x - self._max_knob_x))
         self.dispatch_event('on_change', self._value)
 
@@ -144,7 +143,7 @@ class Slider(WidgetBase):
 
     def on_mouse_scroll(self, x, y, mouse, direction):
         if self._check_hit(x, y):
-            self._update_knob(self._knob_spr.x + direction)
+            self._update_knob(self._knob_spr.x + self._half_knob_width + direction)
 
     def on_mouse_release(self, x, y, buttons, modifiers):
         self._in_update = False
