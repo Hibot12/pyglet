@@ -1,8 +1,6 @@
 
 from . import util
-from .widgets import PushButton, ToggleButton
-
-__all__ = ('Frame', 'PushButton', 'ToggleButton')
+from .widgets import *
 
 
 class Frame:

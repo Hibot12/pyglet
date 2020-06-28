@@ -1,13 +1,13 @@
 import pyglet
 
-from . import util
 
+class WidgetBase(pyglet.event.EventDispatcher):
 
-class _Widget(pyglet.event.EventDispatcher):
-    _x = 0
-    _y = 0
-    _width = 0
-    _height = 0
+    def __init__(self, x, y, width, height):
+        self._x = x
+        self._y = y
+        self._width = width
+        self._height = height
 
     @property
     def x(self):
@@ -20,6 +20,9 @@ class _Widget(pyglet.event.EventDispatcher):
     @property
     def aabb(self):
         return self._x, self._y, self._x + self._width, self._y + self._height
+
+    def _check_hit(self, x, y):
+        return self._x < x < self._x + self._width and self._y < y < self._y + self._height
 
     def on_mouse_press(self, x, y, buttons, modifiers):
         pass
@@ -34,28 +37,22 @@ class _Widget(pyglet.event.EventDispatcher):
         pass
 
 
-_Widget.register_event_type('on_mouse_press')
-_Widget.register_event_type('on_mouse_release')
-_Widget.register_event_type('on_mouse_motion')
-_Widget.register_event_type('on_mouse_scroll')
-_Widget.register_event_type('on_mouse_drag')
+WidgetBase.register_event_type('on_mouse_press')
+WidgetBase.register_event_type('on_mouse_release')
+WidgetBase.register_event_type('on_mouse_motion')
+WidgetBase.register_event_type('on_mouse_scroll')
+WidgetBase.register_event_type('on_mouse_drag')
 
 
-class PushButton(_Widget):
+class PushButton(WidgetBase):
 
     def __init__(self, x, y, pressed, depressed, hover=None, batch=None, group=None):
+        super().__init__(x, y, depressed.width, depressed.height)
         self._pressed_img = pressed
         self._depressed_img = depressed
         self._hover_img = hover
-        self._x = x
-        self._y = y
-        self._width = self._depressed_img.width
-        self._height = self._depressed_img.height
         self._sprite = pyglet.sprite.Sprite(self._depressed_img, x, y, batch=batch, group=group)
         self._pressed = False
-
-    def _check_hit(self, x, y):
-        return self._x < x < self._x + self._width and self._y < y < self._y + self._height
 
     def on_mouse_press(self, x, y, buttons, modifiers):
         if not self._check_hit(x, y):
@@ -98,3 +95,45 @@ class ToggleButton(PushButton):
 
 
 ToggleButton.register_event_type('on_toggle')
+
+
+class Slider(WidgetBase):
+
+    def __init__(self, x, y, base, knob, batch=None, group=None):
+        super().__init__(x, y - knob.height / 2, base.width, knob.height)
+        self._base_img = base
+        self._knob_img = knob
+        self._knob_img.anchor_y = knob.height / 2
+        self._max_knob_x = x + base.width - knob.width
+
+        bg_group = pyglet.graphics.OrderedGroup(0, parent=group)
+        fg_group = pyglet.graphics.OrderedGroup(1, parent=group)
+        self._base_spr = pyglet.sprite.Sprite(self._base_img, x, y, batch=batch, group=bg_group)
+        self._knob_spr = pyglet.sprite.Sprite(self._knob_img, x, y + base.height / 2, batch=batch, group=fg_group)
+
+        self._value = 0
+        self._in_update = False
+
+    def _update_knob(self, x):
+        self._knob_spr.x = max(self._x, min(x, self._max_knob_x))
+        self._value = abs(((self._knob_spr.x - self._x) * 100) / (self._x - self._max_knob_x))
+        self.dispatch_event('on_change', self._value)
+
+    def on_mouse_press(self, x, y, buttons, modifiers):
+        if self._check_hit(x, y):
+            self._in_update = True
+            self._update_knob(x)
+
+    def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
+        if self._in_update:
+            self._update_knob(x)
+
+    def on_mouse_scroll(self, x, y, mouse, direction):
+        if self._check_hit(x, y):
+            self._update_knob(self._knob_spr.x + direction)
+
+    def on_mouse_release(self, x, y, buttons, modifiers):
+        self._in_update = False
+
+
+Slider.register_event_type('on_change')
